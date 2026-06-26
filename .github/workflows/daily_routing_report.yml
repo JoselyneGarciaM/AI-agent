@@ -1,0 +1,47 @@
+name: Reporte Diario de Rutas — Jugos del Día
+
+on:
+  # Corre cada día a las 16:30 Ecuador (UTC-5) = 21:30 UTC
+  # Justo después del corte de pedidos de las 16:00
+  schedule:
+    - cron: "30 21 * * *"
+
+  # Ejecución manual desde la UI de GitHub Actions
+  workflow_dispatch:
+    inputs:
+      date_override:
+        description: "Fecha manual (YYYY-MM-DD). Vacío = fecha actual."
+        required: false
+        default: ""
+
+jobs:
+  generate-report:
+    name: Generar reporte de rutas
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Crear archivo de credenciales
+        # Agrega el secret GOOGLE_SERVICE_ACCOUNT_JSON en:
+        # GitHub repo → Settings → Secrets and variables → Actions
+        run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > /tmp/sa.json
+
+      - name: Ejecutar reporte
+        env:
+          GOOGLE_SERVICE_ACCOUNT_FILE: /tmp/sa.json
+        run: python routing_report.py
+
+      - name: Limpiar credenciales
+        if: always()
+        run: rm -f /tmp/sa.json
