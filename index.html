@@ -81,25 +81,6 @@
       border-top: 1px solid #eee;
       background: #fff;
     }
-    #api-key-row {
-      padding: 12px 16px;
-      border-top: 1px solid #eee;
-      background: #fffbea;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 0.85rem;
-    }
-    #api-key-row label { color: #666; white-space: nowrap; }
-    #api-key {
-      flex: 1;
-      padding: 8px 10px;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      font-family: monospace;
-    }
-
     #user-input {
       flex: 1;
       padding: 12px 16px;
@@ -135,11 +116,6 @@
     <span>🍔</span>
     <h1>Burger Bot</h1>
   </header>
-
-  <div id="api-key-row">
-    <label for="api-key">API Key:</label>
-    <input id="api-key" type="password" placeholder="sk-ant-..." />
-  </div>
 
   <div id="chat">
     <div class="bubble bot">Hi there! 👋 Welcome to Burger Bot. I can show you our menu, take your order, and arrange delivery. What can I get for you today?</div>
@@ -297,8 +273,6 @@ function addBubble(role, text) {
 }
 
 async function send() {
-  const apiKey = document.getElementById("api-key").value.trim();
-  if (!apiKey) { alert("Please enter your Anthropic API key above."); return; }
   const text = input.value.trim();
   if (!text) return;
 
@@ -313,14 +287,9 @@ async function send() {
     let apiMessages = [...messages];
 
     while (true) {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-calls": "true",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-opus-4-8",
           max_tokens: 4096,
