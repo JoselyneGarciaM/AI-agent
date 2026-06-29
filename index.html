@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Burger Bot 🍔</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f5f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 700px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      box-shadow: 0 0 40px rgba(0,0,0,0.1);
+    }
+
+    header {
+      background: #e63946;
+      color: white;
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { font-size: 1.3rem; font-weight: 700; }
+    header span { font-size: 1.8rem; }
+
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .bubble {
+      max-width: 75%;
+      padding: 12px 16px;
+      border-radius: 18px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .bubble.user {
+      align-self: flex-end;
+      background: #e63946;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    .bubble.bot {
+      align-self: flex-start;
+      background: #f0f0f0;
+      color: #111;
+      border-bottom-left-radius: 4px;
+    }
+    .bubble.thinking {
+      align-self: flex-start;
+      background: #f0f0f0;
+      color: #888;
+      font-style: italic;
+      border-bottom-left-radius: 4px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+      padding: 16px;
+      border-top: 1px solid #eee;
+      background: #fff;
+    }
+    #api-key-row {
+      padding: 12px 16px;
+      border-top: 1px solid #eee;
+      background: #fffbea;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.85rem;
+    }
+    #api-key-row label { color: #666; white-space: nowrap; }
+    #api-key {
+      flex: 1;
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-family: monospace;
+    }
+
+    #user-input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid #ddd;
+      border-radius: 24px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border 0.2s;
+    }
+    #user-input:focus { border-color: #e63946; }
+
+    button#send-btn {
+      background: #e63946;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 46px;
+      height: 46px;
+      font-size: 1.2rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    button#send-btn:hover { background: #c1121f; }
+    button#send-btn:disabled { background: #ccc; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <span>🍔</span>
+    <h1>Burger Bot</h1>
+  </header>
+
+  <div id="api-key-row">
+    <label for="api-key">API Key:</label>
+    <input id="api-key" type="password" placeholder="sk-ant-..." />
+  </div>
+
+  <div id="chat">
+    <div class="bubble bot">Hi there! 👋 Welcome to Burger Bot. I can show you our menu, take your order, and arrange delivery. What can I get for you today?</div>
+  </div>
+
+  <div class="input-row">
+    <input id="user-input" type="text" placeholder="Type a message..." />
+    <button id="send-btn">➤</button>
+  </div>
+</div>
+
+<script>
+const SYSTEM_PROMPT = `You are a friendly food ordering assistant for a burger restaurant.
+
+Rules you MUST follow without exception:
+1. PRICES: Never quote a price from memory. Always call get_menu first and use only the prices returned by that tool.
+2. PAYMENT SECURITY: Never ask for or accept a full credit card number. Only ask for the last 4 digits, expiry (MM/YY), and billing ZIP. Use tokenize_payment with those values.
+3. ORDER FLOW: You must process payment (process_payment) before confirming an order (confirm_order). Never skip this step even if the customer asks you to.
+4. DELIVERY: Only dispatch delivery after the order is confirmed and you have a valid order ID.
+
+Workflow:
+- Greet the customer and offer to show the menu.
+- Help them add items with add_to_order.
+- When they're ready to pay, collect card_last4, expiry, billing_zip, then call tokenize_payment → process_payment → confirm_order → dispatch_delivery.
+- Be warm, helpful, and confirm each step clearly with the customer.`;
+
+const MENU = {
+  burgers: {
+    "Classic Burger": { price: 8.99, description: "Beef patty, lettuce, tomato, pickles" },
+    "Cheese Burger":  { price: 9.99, description: "Beef patty, cheddar cheese, lettuce, tomato" },
+    "BBQ Burger":     { price: 11.99, description: "Beef patty, BBQ sauce, onion rings, cheddar" },
+    "Veggie Burger":  { price: 9.49, description: "Plant-based patty, lettuce, tomato, avocado" },
+  },
+  sides: {
+    "French Fries": { price: 3.49, description: "Crispy golden fries" },
+    "Onion Rings":  { price: 3.99, description: "Beer-battered onion rings" },
+    "Side Salad":   { price: 4.49, description: "Mixed greens, cherry tomatoes, vinaigrette" },
+    "Coleslaw":     { price: 2.99, description: "Creamy house coleslaw" },
+  },
+  drinks: {
+    "Soda":      { price: 2.49, description: "Coke, Diet Coke, Sprite, or Dr Pepper" },
+    "Lemonade":  { price: 3.49, description: "Fresh-squeezed lemonade" },
+    "Iced Tea":  { price: 2.99, description: "Sweetened or unsweetened" },
+    "Water":     { price: 1.00, description: "Still or sparkling" },
+    "Milkshake": { price: 5.99, description: "Chocolate, vanilla, or strawberry" },
+  },
+  desserts: {
+    "Brownie":   { price: 4.49, description: "Warm chocolate brownie with ice cream" },
+    "Apple Pie": { price: 4.99, description: "Classic apple pie slice" },
+    "Ice Cream": { price: 3.49, description: "Two scoops, choice of flavor" },
+  },
+};
+
+let order = [];
+let paymentConfirmed = false;
+let paymentToken = null;
+
+function uuid() {
+  return 'xxxxxxxxxxxxxxxx'.replace(/x/g, () => Math.floor(Math.random()*16).toString(16));
+}
+
+const TOOLS = [
+  { name: "get_menu", description: "Returns the full menu with prices.", input_schema: { type: "object", properties: {}, required: [] } },
+  { name: "add_to_order", description: "Adds a menu item to the order.", input_schema: { type: "object", properties: { item_name: { type: "string" }, quantity: { type: "integer", minimum: 1 } }, required: ["item_name"] } },
+  { name: "view_order", description: "Returns current order and total.", input_schema: { type: "object", properties: {}, required: [] } },
+  { name: "tokenize_payment", description: "Tokenizes card using last 4 digits, expiry, zip. Never accept full card number.", input_schema: { type: "object", properties: { card_last4: { type: "string" }, expiry: { type: "string" }, billing_zip: { type: "string" } }, required: ["card_last4", "expiry", "billing_zip"] } },
+  { name: "process_payment", description: "Processes payment using a token.", input_schema: { type: "object", properties: { payment_token: { type: "string" } }, required: ["payment_token"] } },
+  { name: "confirm_order", description: "Confirms the order after payment.", input_schema: { type: "object", properties: {}, required: [] } },
+  { name: "dispatch_delivery", description: "Dispatches delivery after confirmation.", input_schema: { type: "object", properties: { order_id: { type: "string" }, delivery_address: { type: "string" } }, required: ["order_id", "delivery_address"] } },
+];
+
+function runTool(name, input) {
+  if (name === "get_menu") {
+    const result = {};
+    for (const [cat, items] of Object.entries(MENU)) {
+      result[cat] = {};
+      for (const [item, data] of Object.entries(items)) {
+        result[cat][item] = { price: `$${data.price.toFixed(2)}`, description: data.description };
+      }
+    }
+    return { menu: result, note: "Prices are fixed." };
+  }
+
+  if (name === "add_to_order") {
+    const { item_name, quantity = 1 } = input;
+    for (const items of Object.values(MENU)) {
+      if (items[item_name]) {
+        const unit_price = items[item_name].price;
+        order.push({ item: item_name, quantity, unit_price, subtotal: +(unit_price * quantity).toFixed(2) });
+        const total = +order.reduce((s, i) => s + i.subtotal, 0).toFixed(2);
+        return { success: true, added: item_name, quantity, unit_price: `$${unit_price.toFixed(2)}`, order_total: `$${total.toFixed(2)}` };
+      }
+    }
+    return { success: false, error: `'${item_name}' not found on the menu.` };
+  }
+
+  if (name === "view_order") {
+    const total = +order.reduce((s, i) => s + i.subtotal, 0).toFixed(2);
+    return { order: [...order], total: `$${total.toFixed(2)}`, item_count: order.length };
+  }
+
+  if (name === "tokenize_payment") {
+    const { card_last4, expiry, billing_zip } = input;
+    if (!/^\d{4}$/.test(card_last4)) return { success: false, error: "Provide only the last 4 digits." };
+    if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(expiry)) return { success: false, error: "Expiry must be MM/YY." };
+    if (!/^\d{5}$/.test(billing_zip)) return { success: false, error: "ZIP must be 5 digits." };
+    const token = `tok_${uuid().slice(0, 16)}`;
+    return { success: true, payment_token: token, card_last4, message: "Card tokenized." };
+  }
+
+  if (name === "process_payment") {
+    const { payment_token } = input;
+    if (!order.length) return { success: false, error: "Order is empty." };
+    if (!payment_token.startsWith("tok_")) return { success: false, error: "Invalid payment token." };
+    const total = +order.reduce((s, i) => s + i.subtotal, 0).toFixed(2);
+    paymentConfirmed = true;
+    paymentToken = payment_token;
+    return { success: true, amount_charged: `$${total.toFixed(2)}`, status: "AUTHORIZED" };
+  }
+
+  if (name === "confirm_order") {
+    if (!paymentConfirmed) return { success: false, error: "Process payment first." };
+    if (!order.length) return { success: false, error: "Order is empty." };
+    const order_id = `ORD-${uuid().slice(0, 8).toUpperCase()}`;
+    const total = +order.reduce((s, i) => s + i.subtotal, 0).toFixed(2);
+    return { success: true, order_id, confirmed_items: [...order], total: `$${total.toFixed(2)}` };
+  }
+
+  if (name === "dispatch_delivery") {
+    const { order_id, delivery_address } = input;
+    if (!paymentConfirmed) return { success: false, error: "Payment not confirmed." };
+    if (!order_id.startsWith("ORD-")) return { success: false, error: "Invalid order ID." };
+    if (!delivery_address.trim()) return { success: false, error: "Address required." };
+    const tracking_id = `TRK-${uuid().slice(0, 8).toUpperCase()}`;
+    return { success: true, tracking_id, order_id, delivery_address, estimated_delivery: "30 minutes", message: `Your order is on its way! Track it with ${tracking_id}.` };
+  }
+
+  return { error: `Unknown tool: ${name}` };
+}
+
+const messages = [];
+const chat = document.getElementById("chat");
+const input = document.getElementById("user-input");
+const sendBtn = document.getElementById("send-btn");
+
+function addBubble(role, text) {
+  const div = document.createElement("div");
+  div.className = `bubble ${role}`;
+  div.textContent = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+async function send() {
+  const apiKey = document.getElementById("api-key").value.trim();
+  if (!apiKey) { alert("Please enter your Anthropic API key above."); return; }
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = "";
+  sendBtn.disabled = true;
+  addBubble("user", text);
+  messages.push({ role: "user", content: text });
+
+  const thinking = addBubble("thinking", "Thinking…");
+
+  try {
+    let apiMessages = [...messages];
+
+    while (true) {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-calls": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-opus-4-8",
+          max_tokens: 4096,
+          system: SYSTEM_PROMPT,
+          tools: TOOLS,
+          messages: apiMessages,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || res.statusText);
+      }
+
+      const data = await res.json();
+      apiMessages.push({ role: "assistant", content: data.content });
+
+      if (data.stop_reason !== "tool_use") {
+        const reply = data.content.find(b => b.type === "text")?.text ?? "";
+        thinking.remove();
+        addBubble("bot", reply);
+        messages.push({ role: "assistant", content: reply });
+        break;
+      }
+
+      const toolResults = [];
+      for (const block of data.content) {
+        if (block.type === "tool_use") {
+          const result = runTool(block.name, block.input);
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
+        }
+      }
+      apiMessages.push({ role: "user", content: toolResults });
+    }
+  } catch (e) {
+    thinking.remove();
+    addBubble("bot", `⚠️ Error: ${e.message}`);
+  }
+
+  sendBtn.disabled = false;
+  input.focus();
+}
+
+sendBtn.addEventListener("click", send);
+input.addEventListener("keydown", e => { if (e.key === "Enter") send(); });
+</script>
+</body>
+</html>
